@@ -6,6 +6,8 @@ import {
   ClipboardList,
   Copy,
   Eye,
+  HardDrive,
+  Highlighter,
   Info,
   Lightbulb,
   Loader2,
@@ -21,13 +23,44 @@ import {
 } from "lucide-react";
 
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { buildHighlightSegments } from "@/lib/highlight";
 import { redactSensitiveData } from "@/lib/redact";
 import { buildShareText, buildSmsLink, buildWhatsAppLink } from "@/lib/share";
 import { EXAMPLES, FALLBACK_RISK_STYLE, RISK_STYLES } from "@/lib/ui";
 
+/**
+ * Shows the analysed message with the dangerous wording highlighted.
+ * Only excerpts that literally occur in the text can be highlighted, which is
+ * why the model is required to quote word for word.
+ */
+function HighlightedMessage({ text, quotes }) {
+  const segments = buildHighlightSegments(text, quotes);
+  if (segments.length === 0) return null;
+
+  return (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+      {segments.map((segment, index) =>
+        segment.highlighted ? (
+          <mark
+            key={index}
+            className="rounded bg-rose-200/70 px-0.5 font-medium text-rose-900"
+          >
+            {segment.text}
+          </mark>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
 export default function Home() {
   const [message, setMessage] = useState("");
   const [result, setResult] = useState(null);
+  // The redacted text actually sent, kept so highlighting matches exactly the
+  // string the API analysed rather than the raw input.
+  const [analyzedText, setAnalyzedText] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -53,6 +86,7 @@ export default function Home() {
     setError("");
     setResult(null);
     setCopied(false);
+    setAnalyzedText(redaction.text);
 
     try {
       // The redacted text is what actually leaves the browser. The raw message
@@ -87,6 +121,7 @@ export default function Home() {
     setMessage(example.text);
     setResult(null);
     setError("");
+    setAnalyzedText("");
     setShowPreview(false);
   }
 
@@ -94,6 +129,7 @@ export default function Home() {
     setMessage("");
     setResult(null);
     setError("");
+    setAnalyzedText("");
     setCopied(false);
     setShowPreview(false);
   }
@@ -316,11 +352,46 @@ export default function Home() {
               </p>
 
               {result.meta?.degraded && (
-                <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  Our analysis services were temporarily unavailable. This is a
-                  safety message, not an analysis.
-                </p>
+                <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200">
+                  <p className="flex items-center gap-2 font-semibold">
+                    <HardDrive className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    Local analysis (fallback mode)
+                  </p>
+                  <p className="flex items-start gap-2 leading-relaxed">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      Our AI services are unreachable right now, so this verdict
+                      comes from our built-in detection rules. They reliably
+                      catch known scam patterns, but they do not read the
+                      message the way the AI does. Be extra careful with
+                      anything this result does not clearly explain.
+                    </span>
+                  </p>
+                  {result.meta?.local_rules?.length > 0 && (
+                    <p className="text-amber-800">
+                      Patterns matched: {result.meta.local_rules.join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {analyzedText && (
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Highlighter className="h-4 w-4" aria-hidden="true" />
+                    What we reacted to
+                  </h3>
+                  <HighlightedMessage
+                    text={analyzedText}
+                    quotes={result.trap_quotes}
+                  />
+                  {!result.trap_quotes?.length && (
+                    <p className="text-xs text-slate-500">
+                      No single excerpt stood out; the wording as a whole drove
+                      the verdict.
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className="grid gap-5 sm:grid-cols-2">

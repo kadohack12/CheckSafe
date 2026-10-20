@@ -30,9 +30,9 @@ Projet réalisé pour le hackathon **SafeSpace**.
 - [Tailwind CSS](https://tailwindcss.com/)
 - [lucide-react](https://lucide.dev/) pour les icônes
 - [@google/generative-ai](https://www.npmjs.com/package/@google/generative-ai)
-  (modèle `gemini-1.5-flash`)
+  (modèle `gemini-flash-latest`, repli sur `gemini-2.5-flash`)
 - [groq-sdk](https://www.npmjs.com/package/groq-sdk) (repli, modèles
-  `llama-3.3-70b-versatile` puis `llama-3.1-8b-instant`)
+  `openai/gpt-oss-120b` puis `openai/gpt-oss-20b`)
 
 ## Démarrage
 
@@ -56,9 +56,14 @@ L'application est disponible sur <http://localhost:3000>.
 | --------------------- | ----------- | --------------------------------------------------------------------------- |
 | `GEMINI_API_KEY`      | oui         | Clé Google AI Studio, utilisée par le fournisseur principal.                |
 | `GROQ_API_KEY`        | oui         | Clé Groq, utilisée par le repli automatique.                                |
-| `GEMINI_MODEL`        | non         | Défaut : `gemini-1.5-flash`.                                                |
-| `GROQ_MODELS`         | non         | Défaut : `llama-3.3-70b-versatile,llama-3.1-8b-instant` (essayés dans l'ordre). |
-| `PROVIDER_TIMEOUT_MS` | non         | Défaut : `20000`. Délai maximal par appel fournisseur.                      |
+| `GEMINI_MODELS`       | non         | Défaut : `gemini-flash-latest,gemini-2.5-flash`.                            |
+| `GROQ_MODELS`         | non         | Défaut : `openai/gpt-oss-120b,openai/gpt-oss-20b`.                          |
+| `PROVIDER_TIMEOUT_MS` | non         | Défaut : `15000`. Délai maximal par tentative de modèle.                    |
+| `TOTAL_BUDGET_MS`     | non         | Défaut : `50000`. Budget total de l'analyse, sous `maxDuration` (60 s).     |
+
+Les deux variables de modèles acceptent une **liste ordonnée**. Chaque entrée
+est essayée jusqu'à obtenir une réponse exploitable : un modèle retiré par le
+fournisseur fait basculer automatiquement sur le suivant, sans intervention.
 
 ## API
 

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to keep the queue short.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Placeholder values: the build must succeed without real secrets,
+          # and this also guards against the app requiring a key at build time.
+          GEMINI_API_KEY: ci-placeholder
+          GROQ_API_KEY: ci-placeholder
+
+      - name: Check the system prompt is not shipped to the browser
+        run: |
+          # The system prompt must never reach the client bundle: it is sent
+          # from the server on every request. This regressed once already.
+          if grep -rq "You are an assistant specialised in digital safety" .next/static 2>/dev/null; then
+            echo "::error::The system prompt leaked into the client bundle."
+            exit 1
+          fi
+          echo "No system prompt in the client bundle."

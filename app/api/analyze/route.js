@@ -5,10 +5,16 @@ import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Pire cas : Gemini (15 s) puis deux modeles Groq (15 s) = 45 s.
-// La marge sous cette limite permet de renvoyer le mode degrade au lieu
-// d'un 504 si les fournisseurs sont lents.
+// Worst case is bounded by TOTAL_BUDGET_MS (45 s) plus provider overhead.
+// The margin below this ceiling lets the route return a degraded answer
+// instead of a platform-level 504.
 export const maxDuration = 60;
+
+/**
+ * Diagnostic strings are truncated before leaving the server: provider errors
+ * can embed request details we do not want to hand to the browser.
+ */
+const MAX_DIAGNOSTIC_LENGTH = 300;
 
 export async function POST(request) {
   let payload;
@@ -16,16 +22,17 @@ export async function POST(request) {
     payload = await request.json();
   } catch {
     return NextResponse.json(
-      { error: "Requete invalide : un corps JSON est attendu." },
+      { error: "Invalid request: a JSON body is required." },
       { status: 400 },
     );
   }
 
-  const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+  const message =
+    typeof payload?.message === "string" ? payload.message.trim() : "";
 
   if (!message) {
     return NextResponse.json(
-      { error: "Merci de coller un message a analyser." },
+      { error: "Please paste a message to analyse." },
       { status: 400 },
     );
   }
@@ -33,31 +40,46 @@ export async function POST(request) {
   if (message.length > MAX_MESSAGE_LENGTH) {
     return NextResponse.json(
       {
-        error: `Ce message est trop long (${message.length} caracteres). Limite : ${MAX_MESSAGE_LENGTH}.`,
+        error: `This message is too long (${message.length} characters). Limit: ${MAX_MESSAGE_LENGTH}.`,
       },
       { status: 413 },
     );
   }
 
   const startedAt = Date.now();
+
   try {
     const { result, provider, attempts } = await analyzeMessage(message);
+
+    // Deliberately log metadata only, never the message itself: the content
+    // may contain personal or financial details.
+    console.log(
+      `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "none"})`,
+    );
+
     return NextResponse.json({
       ...result,
       meta: {
         provider,
         degraded: provider === null,
-        // Diagnostic : tronque pour ne pas exposer les reponses completes
-        // des fournisseurs (qui peuvent contenir la cle ou du contenu interne).
-        provider_errors: attempts.map((entry) => entry.slice(0, 300)),
+        provider_errors: attempts.map((entry) =>
+          entry.slice(0, MAX_DIAGNOSTIC_LENGTH),
+        ),
         duration_ms: Date.now() - startedAt,
       },
     });
   } catch (error) {
-    console.error("[CheckSafe] erreur inattendue -", error);
+    console.error("[CheckSafe] unexpected error:", error?.message || error);
     return NextResponse.json(
-      { error: "Une erreur inattendue est survenue pendant l'analyse." },
+      { error: "Something unexpected happened during the analysis." },
       { status: 500 },
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: "Use POST with a JSON body containing a 'message' field." },
+    { status: 405, headers: { Allow: "POST" } },
+  );
 }

@@ -16,7 +16,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Barre de defilement discrete, coherente avec la palette bleu/slate */
+/* Slim scrollbar matching the blue/slate palette */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

@@ -1,0 +1,57 @@
+name: Production smoke test
+
+on:
+  schedule:
+    # Every 6 hours. Keeps an eye on the deployed app without human input.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Verify the live deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Homepage responds
+        run: |
+          code=$(curl -s -o /tmp/home.html -w "%{http_code}" --max-time 30 https://check-safe-beryl.vercel.app/)
+          echo "GET / -> $code"
+          [ "$code" = "200" ] || { echo "::error::Homepage returned $code"; exit 1; }
+          grep -q "CheckSafe" /tmp/home.html || { echo "::error::Homepage content unexpected"; exit 1; }
+
+      - name: Analysis endpoint validates input
+        run: |
+          # Empty body must be rejected with 400, not silently accepted.
+          code=$(curl -s -o /tmp/empty.json -w "%{http_code}" --max-time 60 \
+            -X POST https://check-safe-beryl.vercel.app/api/analyze \
+            -H "Content-Type: application/json" -d '{}')
+          echo "POST {} -> $code"
+          [ "$code" = "400" ] || { echo "::error::Empty body returned $code, expected 400"; exit 1; }
+
+      - name: Analysis endpoint answers a real message
+        run: |
+          response=$(curl -s --max-time 90 \
+            -X POST https://check-safe-beryl.vercel.app/api/analyze \
+            -H "Content-Type: application/json" \
+            -d '{"message":"Your parcel is held. Pay a 2.99 EUR fee at parcel-pay-secure.com within 24h or it is returned."}')
+
+          echo "$response" | head -c 600
+          echo
+
+          # The response contract must hold even in degraded mode.
+          for field in risk_level summary detected_traps recommended_actions reassurance; do
+            echo "$response" | grep -q "\"$field\"" || {
+              echo "::error::Response is missing the '$field' field."; exit 1; }
+          done
+
+          # A parcel-fee scam must not come back as "Low". This is the safety
+          # property that matters: a confident wrong "safe" is the worst
+          # possible failure for this product.
+          if echo "$response" | grep -q '"risk_level":"Low"'; then
+            echo "::error::A known parcel-fee scam was classified as Low risk."
+            exit 1
+          fi
+
+          if echo "$response" | grep -q '"degraded":true'; then
+            echo "::warning::Both providers were unavailable; answered in degraded mode."
+          fi
+          echo "Smoke test passed."

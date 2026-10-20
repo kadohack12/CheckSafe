@@ -1,25 +1,25 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "CheckSafe — Un doute sur un message ?",
+  title: "CheckSafe — Not sure about a message?",
   description:
-    "CheckSafe analyse les SMS, e-mails et messages WhatsApp pour vous aider a reperer les arnaques, le phishing et la manipulation, en langage simple.",
+    "CheckSafe reads SMS, email and WhatsApp messages to help you spot scams, phishing and manipulation, in plain language.",
   applicationName: "CheckSafe",
   authors: [{ name: "CheckSafe" }],
   keywords: [
     "phishing",
-    "arnaque",
-    "securite",
-    "SMS frauduleux",
-    "ingenierie sociale",
+    "scam",
+    "digital safety",
+    "smishing",
+    "social engineering",
     "CheckSafe",
   ],
   openGraph: {
-    title: "CheckSafe — Assistant de detection des arnaques numeriques",
+    title: "CheckSafe — Digital scam detection assistant",
     description:
-      "Un doute sur un message ? Verifions ensemble en toute tranquillite.",
+      "Not sure about a message? Let's look at it together, calmly.",
     type: "website",
-    locale: "fr_FR",
+    locale: "en_US",
   },
   robots: { index: true, follow: true },
 };
@@ -32,7 +32,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="fr">
+    <html lang="en">
       <body className="min-h-full bg-gradient-to-b from-slate-50 via-blue-50/40 to-emerald-50/40 text-slate-800 antialiased">
         {children}
       </body>

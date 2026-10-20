@@ -8,8 +8,10 @@ import {
   Info,
   Lightbulb,
   Loader2,
+  Lock,
   RotateCcw,
   Search,
+  ShieldCheck,
   Sparkles,
   XCircle,
 } from "lucide-react";
@@ -25,8 +27,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
 
   const riskStyle = useMemo(
-    () =>
-      (result && RISK_STYLES[result.niveau_risque]) || FALLBACK_RISK_STYLE,
+    () => (result && RISK_STYLES[result.risk_level]) || FALLBACK_RISK_STYLE,
     [result],
   );
 
@@ -54,7 +55,7 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "L'analyse n'a pas pu aboutir. Verifiez votre connexion et reessayez.",
+            "The analysis could not complete. Check your connection and try again.",
         );
       }
 
@@ -62,7 +63,7 @@ export default function Home() {
     } catch (requestError) {
       setError(
         requestError?.message ||
-          "Impossible de contacter le service d'analyse pour le moment.",
+          "We cannot reach the analysis service right now.",
       );
     } finally {
       setLoading(false);
@@ -85,13 +86,13 @@ export default function Home() {
   async function handleCopy() {
     if (!result) return;
     const summary = [
-      `Niveau de risque : ${result.niveau_risque}`,
-      result.resume_simple,
-      result.pieges_detectes?.length
-        ? `Pieges detectes : ${result.pieges_detectes.join(", ")}`
+      `Risk level: ${result.risk_level}`,
+      result.summary,
+      result.detected_traps?.length
+        ? `Traps detected: ${result.detected_traps.join(", ")}`
         : null,
-      `Actions conseillees : ${(result.actions_conseillees || []).join(" | ")}`,
-      result.phrase_rassurante,
+      `Recommended actions: ${(result.recommended_actions || []).join(" | ")}`,
+      result.reassurance,
     ]
       .filter(Boolean)
       .join("\n");
@@ -101,7 +102,7 @@ export default function Home() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      setError("La copie automatique n'est pas disponible sur cet appareil.");
+      setError("Automatic copy is not available on this device.");
     }
   }
 
@@ -110,14 +111,14 @@ export default function Home() {
       <header className="text-center">
         <div className="mb-4 flex items-center justify-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
-            <CheckCircle2 className="h-7 w-7" aria-hidden="true" />
+            <ShieldCheck className="h-7 w-7" aria-hidden="true" />
           </span>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             CheckSafe
           </h1>
         </div>
         <p className="mx-auto max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
-          Un doute sur un message ? Vérifions ensemble en toute tranquillité.
+          Not sure about a message? Let&apos;s look at it together, calmly.
         </p>
       </header>
 
@@ -129,7 +130,7 @@ export default function Home() {
           htmlFor="message"
           className="mb-2 block text-sm font-semibold text-slate-700"
         >
-          Collez ici le message qui vous inquiète (SMS, e-mail, WhatsApp…)
+          Paste the message that worries you (SMS, email, WhatsApp…)
         </label>
         <textarea
           id="message"
@@ -144,7 +145,7 @@ export default function Home() {
           rows={7}
           spellCheck="false"
           aria-describedby="message-help"
-          placeholder="Exemple : « Votre colis est bloqué, cliquez ici pour payer 2,99 € »"
+          placeholder="Example: “Your parcel is blocked, click here to pay 2.99 EUR”"
           className="w-full resize-y rounded-2xl border border-slate-300 bg-slate-50/60 px-4 py-3 text-base leading-relaxed text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/15"
         />
 
@@ -153,13 +154,13 @@ export default function Home() {
           className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"
         >
           <span>
-            Astuce : vous pouvez aussi appuyer sur{" "}
+            Tip: you can also press{" "}
             <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-sans text-[11px] text-slate-600">
               Ctrl
             </kbd>{" "}
             +{" "}
             <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-sans text-[11px] text-slate-600">
-              Entrée
+              Enter
             </kbd>
           </span>
           <span className={tooLong ? "font-semibold text-rose-600" : ""}>
@@ -176,12 +177,12 @@ export default function Home() {
             {loading ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                Analyse en cours…
+                Analysing…
               </>
             ) : (
               <>
                 <Search className="h-5 w-5" aria-hidden="true" />
-                Analyser
+                Analyse
               </>
             )}
           </button>
@@ -192,18 +193,18 @@ export default function Home() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-3.5 text-base font-medium text-slate-600 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Effacer
+            Clear
           </button>
         </div>
       </form>
 
-      <section aria-labelledby="exemples-titre">
+      <section aria-labelledby="examples-title">
         <h2
-          id="exemples-titre"
+          id="examples-title"
           className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"
         >
           <Sparkles className="h-4 w-4" aria-hidden="true" />
-          Exemples rapides à tester
+          Quick examples to try
         </h2>
         <div className="grid gap-3 sm:grid-cols-3">
           {EXAMPLES.map((example) => (
@@ -240,16 +241,16 @@ export default function Home() {
           aria-live="polite"
           className="flex items-center gap-3 rounded-2xl bg-white/80 p-4 text-sm text-slate-600 ring-1 ring-slate-200"
         >
-          <Loader2 className="h-5 w-5 animate-spin text-blue-600" aria-hidden="true" />
-          Nous lisons le message attentivement, quelques secondes…
+          <Loader2
+            className="h-5 w-5 animate-spin text-blue-600"
+            aria-hidden="true"
+          />
+          We are reading the message carefully, a few seconds…
         </div>
       )}
 
       {result && (
-        <section
-          aria-live="polite"
-          className="animate-fade-in-up space-y-5"
-        >
+        <section aria-live="polite" className="animate-fade-in-up space-y-5">
           <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/5 ring-1 ring-slate-200">
             <div className={`h-1.5 w-full ${riskStyle.bar}`} aria-hidden="true" />
             <div className="space-y-5 p-5 sm:p-7">
@@ -261,19 +262,19 @@ export default function Home() {
                   {riskStyle.label}
                 </span>
                 <span className="text-xs text-slate-400">
-                  {result.niveau_risque}
+                  {result.risk_level}
                 </span>
               </div>
 
               <p className="text-lg leading-relaxed text-slate-800">
-                {result.resume_simple}
+                {result.summary}
               </p>
 
               {result.meta?.degraded && (
                 <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
                   <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  Nos services d&apos;analyse étaient momentanément indisponibles.
-                  Ce résultat est un message de prudence, pas une analyse.
+                  Our analysis services were temporarily unavailable. This is a
+                  safety message, not an analysis.
                 </p>
               )}
 
@@ -281,22 +282,22 @@ export default function Home() {
                 <div className={`rounded-2xl p-4 ring-1 ${riskStyle.panel}`}>
                   <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <ClipboardList className="h-4 w-4" aria-hidden="true" />
-                    Pièges détectés
+                    Traps detected
                   </h3>
-                  {result.pieges_detectes?.length ? (
+                  {result.detected_traps?.length ? (
                     <ul className="space-y-2">
-                      {result.pieges_detectes.map((piege, index) => (
+                      {result.detected_traps.map((trap, index) => (
                         <li
-                          key={`${piege}-${index}`}
+                          key={`${trap}-${index}`}
                           className="rounded-xl bg-white/80 px-3 py-2 text-sm leading-relaxed text-slate-700 ring-1 ring-white"
                         >
-                          {piege}
+                          {trap}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="text-sm leading-relaxed text-slate-600">
-                      Aucun piège évident repéré dans ce message.
+                      No obvious trap found in this message.
                     </p>
                   )}
                 </div>
@@ -304,10 +305,10 @@ export default function Home() {
                 <div className="rounded-2xl bg-blue-50/70 p-4 ring-1 ring-blue-200">
                   <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    Actions recommandées
+                    Recommended actions
                   </h3>
                   <ol className="space-y-2">
-                    {(result.actions_conseillees || []).map((action, index) => (
+                    {(result.recommended_actions || []).map((action, index) => (
                       <li
                         key={`${action}-${index}`}
                         className="flex items-start gap-3 rounded-xl bg-white/80 px-3 py-2 text-sm leading-relaxed text-slate-700 ring-1 ring-white"
@@ -328,7 +329,7 @@ export default function Home() {
                     className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600"
                     aria-hidden="true"
                   />
-                  {result.phrase_rassurante}
+                  {result.reassurance}
                 </p>
                 <button
                   type="button"
@@ -336,7 +337,7 @@ export default function Home() {
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-400/30"
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
-                  {copied ? "Copié !" : "Copier le résumé"}
+                  {copied ? "Copied!" : "Copy summary"}
                 </button>
               </div>
             </div>
@@ -346,17 +347,25 @@ export default function Home() {
 
       <footer className="mt-auto space-y-3 border-t border-slate-200 pt-6 text-xs leading-relaxed text-slate-500">
         <p className="flex items-start gap-2">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          <span>
+            Your message is sent to the AI provider only to be analysed. We do
+            not store it, and we never ask for a password, a code or bank
+            details.
+          </span>
+        </p>
+        <p className="flex items-start gap-2">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span>
-            Note de transparence : CheckSafe analyse les schémas d&apos;ingénierie
-            sociale et la manipulation psychologique. Il ne remplace pas une
-            analyse réseau approfondie ni une vérification directe auprès des
-            organismes officiels.
+            Transparency note: CheckSafe reads the wording of a message for
+            social-engineering patterns. It does not scan links, attachments or
+            your device, and it does not replace checking with the organisation
+            itself. Treat the result as a second opinion, never a guarantee.
           </span>
         </p>
         <p className="text-slate-400">
-          Projet réalisé pour le hackathon SafeSpace. N&apos;envoyez jamais de mot
-          de passe, de code de validation ni de coordonnées bancaires.
+          Built for the SafeSpace hackathon. Never send a password, a
+          verification code or bank details to anyone.
         </p>
       </footer>
     </main>

@@ -10,7 +10,8 @@ Devpost submission form. Sections match the Devpost fields.
 CheckSafe is a scam detector for people who are not technical. Paste a
 suspicious SMS, email or WhatsApp message and get a plain-language verdict, the
 manipulation techniques it uses, and the exact steps to take next — with no
-jargon, and no blame.
+jargon, and no blame. Personal data is masked before the message is even sent,
+and one tap forwards the warning to a relative.
 
 ---
 
@@ -55,7 +56,18 @@ You paste a message. CheckSafe returns:
 - **A reassurance** that reinforces the fact that checking *was* the right
   thing to do.
 
-The result can be copied in one tap and forwarded to whoever needs it.
+**Personal data is masked before it is sent.** Scam messages usually contain
+the victim's own data — the callback number, the account being "verified". None
+of it is needed to judge the message, so CheckSafe strips emails, phone
+numbers, IBANs, card numbers and amounts **in the browser, before anything
+leaves the device**. A green badge tells the user exactly what was masked, with
+a *See exactly what is sent* toggle so they can verify the claim instead of
+trusting it.
+
+**The result can be forwarded in one tap.** A *Share with someone you care
+about* panel builds a short, pre-filled warning for WhatsApp or SMS. Scams
+spread through families, so warning one person is worth more than any
+individual verdict.
 
 Three one-tap examples ship with the interface — a fake delivery SMS, a bank
 security alert, and a genuinely harmless message — so anyone can see the full
@@ -96,10 +108,20 @@ services were temporarily unavailable. This is a safety message, not an
 analysis."* A false "this is safe" is far worse than an honest "I could not
 tell".
 
-**Privacy by default.** The message is sent to the provider for analysis and is
-never stored. Server logs record the character count, the duration and the
-provider name — never the content, because the content can contain personal and
-financial details.
+**Privacy by default, enforced twice.** `lib/redact.js` is a pure,
+dependency-free filter that runs in the browser *and* on the server. The browser
+version exists to show the user what was removed; the server version is the real
+enforcement point, because the API is public and can be called directly. The
+count comes back in `meta.masked`, so the protection is observable from
+outside — and a scheduled agent asserts it against the live deployment. The
+message is never stored, and server logs record only the character count,
+duration, provider and masked count.
+
+One subtlety we cared about: **over-redaction is also a safety bug.** Masking
+`24h` or `6-digit code` would blind the analyser to the patterns that make a
+message dangerous, so amounts are only masked when attached to a currency, and
+years, times and percentages are left alone. Fifteen tests pin that behaviour
+down.
 
 ---
 
@@ -148,11 +170,11 @@ machine and that trust has to be earned honestly.
   infrastructure and not only wording.
 - **Screenshot and image input**, since many scams arrive as images on
   messaging apps.
-- **A "check with someone I trust" share flow**, turning the copy button into a
-  direct hand-off to a family member.
 - **Local pattern library**, so common regional scam templates can be caught
   without a model call at all — faster, cheaper, and more predictable.
 - **Reporting integrations** with national anti-fraud services.
+- **Masking transparency at scale**: publishing the redaction rules so users,
+  journalists and auditors can verify the privacy claim independently.
 
 ---
 

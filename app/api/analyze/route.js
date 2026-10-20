@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { analyzeMessage } from "@/lib/analyze";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { redactSensitiveData } from "@/lib/redact";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,13 +49,20 @@ export async function POST(request) {
 
   const startedAt = Date.now();
 
+  // Redaction runs again here. The browser already masks the message, but the
+  // API is public and can be called directly, so the server is the real
+  // enforcement point rather than a second opinion.
+  const redaction = redactSensitiveData(message);
+
   try {
-    const { result, provider, attempts } = await analyzeMessage(message);
+    const { result, provider, attempts } = await analyzeMessage(
+      redaction.text,
+    );
 
     // Deliberately log metadata only, never the message itself: the content
     // may contain personal or financial details.
     console.log(
-      `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "none"})`,
+      `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "none"}, masked=${redaction.total})`,
     );
 
     return NextResponse.json({
@@ -66,6 +74,7 @@ export async function POST(request) {
           entry.slice(0, MAX_DIAGNOSTIC_LENGTH),
         ),
         duration_ms: Date.now() - startedAt,
+        masked: redaction.total,
       },
     });
   } catch (error) {

@@ -5,18 +5,24 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
+  Eye,
   Info,
   Lightbulb,
   Loader2,
   Lock,
+  MessageCircle,
   RotateCcw,
   Search,
+  Share2,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   XCircle,
 } from "lucide-react";
 
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { redactSensitiveData } from "@/lib/redact";
+import { buildShareText, buildSmsLink, buildWhatsAppLink } from "@/lib/share";
 import { EXAMPLES, FALLBACK_RISK_STYLE, RISK_STYLES } from "@/lib/ui";
 
 export default function Home() {
@@ -25,6 +31,11 @@ export default function Home() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Redaction runs live so the badge can tell the user what is being removed
+  // before they press Analyse. Nothing is sent until they do.
+  const redaction = useMemo(() => redactSensitiveData(message), [message]);
 
   const riskStyle = useMemo(
     () => (result && RISK_STYLES[result.risk_level]) || FALLBACK_RISK_STYLE,
@@ -44,10 +55,12 @@ export default function Home() {
     setCopied(false);
 
     try {
+      // The redacted text is what actually leaves the browser. The raw message
+      // never reaches the API.
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: redaction.text }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -74,6 +87,7 @@ export default function Home() {
     setMessage(example.text);
     setResult(null);
     setError("");
+    setShowPreview(false);
   }
 
   function handleReset() {
@@ -81,6 +95,7 @@ export default function Home() {
     setResult(null);
     setError("");
     setCopied(false);
+    setShowPreview(false);
   }
 
   async function handleCopy() {
@@ -105,6 +120,8 @@ export default function Home() {
       setError("Automatic copy is not available on this device.");
     }
   }
+
+  const shareText = result ? buildShareText(result) : "";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-10 sm:px-6 sm:py-14">
@@ -167,6 +184,34 @@ export default function Home() {
             {message.length} / {MAX_MESSAGE_LENGTH}
           </span>
         </div>
+
+        {/* Privacy badge. Only claims what the code actually does: personal
+            identifiers are masked locally, before anything is sent. */}
+        {redaction.total > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
+            <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="font-semibold">
+              Private data masked before analysis
+            </span>
+            <span className="text-emerald-700">
+              — {redaction.labels.join(", ")} ({redaction.total})
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPreview((value) => !value)}
+              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2 py-1 font-medium text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+            >
+              <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+              {showPreview ? "Hide" : "See exactly what is sent"}
+            </button>
+          </div>
+        )}
+
+        {showPreview && redaction.total > 0 && (
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
+            {redaction.text}
+          </pre>
+        )}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <button
@@ -342,6 +387,43 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* Share with a relative. Scams spread through families, so warning
+              someone is the highest-value action a user can take. */}
+          <div className="rounded-3xl bg-white p-5 shadow-xl shadow-slate-900/5 ring-1 ring-slate-200 sm:p-7">
+            <h2 className="mb-1 flex items-center gap-2 text-base font-semibold text-slate-800">
+              <Share2 className="h-5 w-5 text-blue-600" aria-hidden="true" />
+              Share with someone you care about
+            </h2>
+            <p className="mb-4 text-sm leading-relaxed text-slate-600">
+              A short warning is the best protection. Send this verdict to a
+              parent, a neighbour or a friend who might receive the same
+              message.
+            </p>
+
+            <pre className="mb-4 max-h-44 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700 ring-1 ring-slate-200">
+              {shareText}
+            </pre>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <a
+                href={buildWhatsAppLink(shareText)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/30"
+              >
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                Send on WhatsApp
+              </a>
+              <a
+                href={buildSmsLink(shareText)}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-slate-300/40"
+              >
+                <Smartphone className="h-4 w-4" aria-hidden="true" />
+                Send by SMS
+              </a>
+            </div>
+          </div>
         </section>
       )}
 
@@ -349,9 +431,9 @@ export default function Home() {
         <p className="flex items-start gap-2">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span>
-            Your message is sent to the AI provider only to be analysed. We do
-            not store it, and we never ask for a password, a code or bank
-            details.
+            Phone numbers, email addresses, bank details and card numbers are
+            masked in your browser before the message is sent. We do not store
+            it, and we never ask for a password, a code or bank details.
           </span>
         </p>
         <p className="flex items-start gap-2">

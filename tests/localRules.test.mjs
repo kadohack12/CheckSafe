@@ -168,6 +168,25 @@ test("escalation never lowers a strict model verdict", () => {
   assert.equal(kept.escalated, false);
 });
 
+test("an absent local match never escalates a confident model verdict", () => {
+  // Regression: the engine reports Undetermined when no rule matched, which is
+  // absence of evidence. It must not outrank the model's "Low", or every
+  // innocent message would become a false alarm.
+  const low = escalateRiskLevel("Low", "Undetermined");
+  assert.equal(low.risk_level, "Low");
+  assert.equal(low.escalated, false);
+
+  const suspicious = escalateRiskLevel("Suspicious", "Undetermined");
+  assert.equal(suspicious.risk_level, "Suspicious");
+  assert.equal(suspicious.escalated, false);
+});
+
+test("a positive local match still escalates a lenient model verdict", () => {
+  const result = escalateRiskLevel("Low", "Suspicious");
+  assert.equal(result.risk_level, "Suspicious");
+  assert.equal(result.escalated, true);
+});
+
 test("escalation treats an unknown level as Undetermined, not as safe", () => {
   const result = escalateRiskLevel("Banana", "Suspicious");
   assert.equal(result.risk_level, "Suspicious");

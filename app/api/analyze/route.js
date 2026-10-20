@@ -5,6 +5,10 @@ import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Pire cas : Gemini (15 s) puis deux modeles Groq (15 s) = 45 s.
+// La marge sous cette limite permet de renvoyer le mode degrade au lieu
+// d'un 504 si les fournisseurs sont lents.
+export const maxDuration = 60;
 
 export async function POST(request) {
   let payload;

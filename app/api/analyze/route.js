@@ -47,7 +47,9 @@ export async function POST(request) {
       meta: {
         provider,
         degraded: provider === null,
-        provider_errors: attempts,
+        // Diagnostic : tronque pour ne pas exposer les reponses completes
+        // des fournisseurs (qui peuvent contenir la cle ou du contenu interne).
+        provider_errors: attempts.map((entry) => entry.slice(0, 300)),
         duration_ms: Date.now() - startedAt,
       },
     });

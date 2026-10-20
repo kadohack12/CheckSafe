@@ -14,9 +14,8 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import { EXAMPLES, FALLBACK_RISK_STYLE, RISK_STYLES } from "@/lib/ui";
-
-const MAX_MESSAGE_LENGTH = 4000;
 
 export default function Home() {
   const [message, setMessage] = useState("");

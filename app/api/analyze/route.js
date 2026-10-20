@@ -6,16 +6,9 @@ import { redactSensitiveData } from "@/lib/redact";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Worst case is bounded by TOTAL_BUDGET_MS (45 s) plus provider overhead.
-// The margin below this ceiling lets the route return a degraded answer
-// instead of a platform-level 504.
-export const maxDuration = 60;
+// Worst case is bounded by the per-provider budgets plus overhead.
 
-/**
- * Diagnostic strings are truncated before leaving the server: provider errors
- * can embed request details we do not want to hand to the browser.
- */
-const MAX_DIAGNOSTIC_LENGTH = 300;
+const MAX_DIAGNOSTIC_LENGTH = 160;
 
 export async function POST(request) {
   let payload;
@@ -23,17 +16,16 @@ export async function POST(request) {
     payload = await request.json();
   } catch {
     return NextResponse.json(
-      { error: "Invalid request: a JSON body is required." },
+      { error: "The request body must be valid JSON." },
       { status: 400 },
     );
   }
 
-  const message =
-    typeof payload?.message === "string" ? payload.message.trim() : "";
+  const message = typeof payload?.message === "string" ? payload.message.trim() : "";
 
   if (!message) {
     return NextResponse.json(
-      { error: "Please paste a message to analyse." },
+      { error: "Please paste the message you want to check." },
       { status: 400 },
     );
   }
@@ -41,7 +33,7 @@ export async function POST(request) {
   if (message.length > MAX_MESSAGE_LENGTH) {
     return NextResponse.json(
       {
-        error: `This message is too long (${message.length} characters). Limit: ${MAX_MESSAGE_LENGTH}.`,
+        error: `The message is too long (${message.length} characters). The limit is ${MAX_MESSAGE_LENGTH}.`,
       },
       { status: 413 },
     );
@@ -55,21 +47,30 @@ export async function POST(request) {
   const redaction = redactSensitiveData(message);
 
   try {
-    const { result, provider, attempts } = await analyzeMessage(
+    const { result, provider, attempts, local } = await analyzeMessage(
       redaction.text,
     );
 
     // Deliberately log metadata only, never the message itself: the content
     // may contain personal or financial details.
     console.log(
-      `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "none"}, masked=${redaction.total})`,
+      `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "local-rules"}, masked=${redaction.total})`,
+    );
+
+    // Any quote that does not literally appear in the message would break
+    // highlighting, so it is dropped here as a final guard.
+    const trap_quotes = (result.trap_quotes || []).filter(
+      (quote) => typeof quote === "string" && redaction.text.includes(quote),
     );
 
     return NextResponse.json({
       ...result,
+      trap_quotes,
       meta: {
         provider,
+        // "degraded" means the answer came from the rules engine, not a model.
         degraded: provider === null,
+        local_rules: local?.matched_rules || [],
         provider_errors: attempts.map((entry) =>
           entry.slice(0, MAX_DIAGNOSTIC_LENGTH),
         ),
@@ -88,7 +89,7 @@ export async function POST(request) {
 
 export async function GET() {
   return NextResponse.json(
-    { error: "Use POST with a JSON body containing a 'message' field." },
+    { error: "Use POST to analyse a message." },
     { status: 405, headers: { Allow: "POST" } },
   );
 }

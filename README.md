@@ -112,6 +112,58 @@ is public and can be called directly. Redaction runs again server-side, and the
 count is returned in `meta.masked` so the protection is observable from
 outside. A scheduled check asserts this against the live deployment.
 
+## Seeing the evidence: exact excerpts, highlighted
+
+A verdict alone asks the user to take our word for it. So every trap the
+analyser reports is tied to an excerpt copied **word for word** from the
+message, and the message is displayed back with that wording highlighted.
+
+This only works if the model returns a real excerpt rather than a concept, so
+the requirement is explicit in the prompt and enforced in code. A quote is kept
+only if it literally occurs in the message, checked twice: once when
+normalising the model reply, once in the API route. A paraphrase such as
+*"authentication request"* is discarded, because highlighting words the user
+never received would be worse than highlighting nothing.
+
+The interface states plainly when no excerpt stood out, rather than implying an
+explanation it does not have.
+
+## Working when the AI does not: local rules
+
+The application must stay useful when the network, the API keys or the model
+providers fail. `lib/localRules.js` is a deterministic, bilingual rules engine
+that detects ten known scam signatures: requested secret codes, gift-card and
+crypto payments, shortened links combined with a brand or a delivery, blocked
+accounts with urgency, money requests from a new number, and so on.
+
+It has two roles:
+
+**Fallback.** When every provider fails, the engine answers instead of
+returning an error. A message asking for a verification code is dangerous
+whether or not an API is reachable. The interface then shows an honest amber
+badge: *Local analysis (fallback mode)*, naming the patterns that matched. It
+never pretends a model produced the answer.
+
+**Safety floor.** When a model does answer, the engine runs alongside it and
+can only ever *raise* the verdict, never lower it. A known scam signature must
+not be talked down by a probabilistic judgement.
+
+The engine never returns `Low`. A rules engine can recognise a danger pattern,
+but it cannot certify that a message is safe, so the absence of a match is
+reported as `Undetermined`. Claiming safety it cannot prove is the one thing
+this project refuses to do.
+
+## Determinism
+
+`temperature` is `0` on both providers, so the same message yields the same
+verdict on stage as it did in testing. Provider selection also uses a
+deterministic tie-break rather than "first to resolve", so latency variation
+cannot change the outcome. The rules engine is pure and synchronous, so its
+verdict is stable by construction.
+
+Measured: three consecutive analyses of the same message all returned
+`Very dangerous`.
+
 ## Responsible design and trust
 
 This is the part of the product that matters most, because we are asking
@@ -317,13 +369,17 @@ app/
   layout.js              metadata
   globals.css            Tailwind + global styles
 lib/
-  analyze.js             provider orchestration, budgets, normalisation
+  analyze.js             provider race, budgets, normalisation, safety floor
   constants.js           values shared by client and server
+  localRules.js          offline rules engine, bilingual, never returns Low
+  highlight.js           turns exact quotes into renderable segments
   prompt.js              system prompt, JSON contract, untrusted-input wrapper
   redact.js              privacy filter: masks personal data before sending
   share.js               builds the forward-to-a-relative message
   ui.js                  risk styles and one-tap examples
 tests/
+  localRules.test.mjs    the four reference cases offline + escalation rules
+  highlight.test.mjs     exact-quote matching and paraphrase rejection
   redact.test.mjs        masking, plus over-redaction guards
   share.test.mjs         forwarded-message wording and links
 docs/
@@ -333,12 +389,12 @@ docs/
 ## Quality
 
 ```bash
-npm test         # unit tests (node:test), 24 checks
+npm test         # unit tests (node:test), 60 checks
 npm run lint     # ESLint (next/core-web-vitals)
 npm run build    # production build
 ```
 
-Verified: 24 unit tests passing, lint clean, production build clean, input
+Verified: 60 unit tests passing, lint clean, production build clean, input
 validation tested (empty body, invalid JSON, over-length message), degraded
 mode tested without API keys, the full fallback chain tested with deliberately
 invalid keys, and server-side redaction confirmed end to end (`masked=2` on a
@@ -352,6 +408,9 @@ Two GitHub Actions agents run without human input:
   checks the response contract, asserts that a known parcel-fee scam is never
   classified as `Low`, and verifies that personal data is still masked
   server-side.
+
+The four reference cases are also covered by unit tests, so a regression in
+the verdict thresholds fails the build rather than reaching a user.
 
 ## License
 

@@ -101,6 +101,22 @@ seconds**. With the concurrent race it takes **2 to 3 seconds**.
 model inside a delimited block explicitly labelled as untrusted, with an
 instruction to analyse it and never obey it.
 
+**We show the evidence, not just a verdict.** Every trap is tied to an excerpt
+copied word for word from the message, and the message is displayed back with
+that wording highlighted. This only works if the model quotes rather than
+paraphrases, so the requirement is in the prompt and enforced in code: a quote
+that does not literally appear in the message is discarded. Highlighting words
+the user never received would be worse than highlighting nothing.
+
+**It still works when the AI does not.** `lib/localRules.js` is a deterministic,
+bilingual rules engine covering ten known scam signatures. When every provider
+fails it answers instead of erroring, under an honest amber badge reading
+*Local analysis (fallback mode)*. When a model does answer, the engine runs
+alongside it and can only ever *raise* the verdict, never lower it: a known
+scam signature must not be talked down by a probabilistic judgement. It never
+returns `Low`, because a rules engine can recognise danger but cannot certify
+safety — absence of a match is reported as `Undetermined`.
+
 **Failure is a first-class outcome.** If every provider fails, the API does not
 throw and does not guess. It returns `risk_level: "Undetermined"` with
 `meta.degraded: true`, and the interface says so plainly: *"Our analysis
@@ -126,6 +142,19 @@ down.
 ---
 
 ## Challenges
+
+**Our own safety floor caused a false alarm.** The rules engine reports
+`Undetermined` when no rule matches. We initially compared severity ranks
+numerically, so that "no rule matched" outranked a model's confident `Low` and
+turned every innocent message into a warning. Absence of evidence is not
+evidence of danger: only a positive rule match may now escalate, and two
+regression tests pin the behaviour.
+
+**A performance fix that quietly cost 10 seconds.** Switching to
+`Promise.allSettled` to collect provider errors made every request wait for the
+slowest provider (14 s measured) instead of returning the first usable answer.
+`Promise.any` restored the 1.5-2 s path while still falling back only when every
+provider has genuinely failed.
 
 **The models we built on disappeared.** During development, Google retired
 `gemini-1.5-flash`. Groq shut down both of our default models. And

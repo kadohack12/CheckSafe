@@ -56,6 +56,39 @@ jobs:
           fi
           echo "Smoke test passed."
 
+      - name: The four reference cases keep their verdict
+        run: |
+          # A false negative on a known scam is the worst failure this product
+          # can have, so the two dangerous cases are asserted on every run.
+          check() {
+            label="$1"; payload="$2"; expect="$3"
+            got=$(curl -s --max-time 90 \
+              -X POST https://check-safe-beryl.vercel.app/api/analyze \
+              -H "Content-Type: application/json" \
+              -d "$payload" | sed -n 's/.*"risk_level":"\([^"]*\)".*/\1/p')
+            echo "$label -> $got (expected $expect)"
+            if [ "$got" != "$expect" ]; then
+              echo "::error::$label returned '$got', expected '$expect'."
+              exit 1
+            fi
+          }
+
+          check "case 1 fake parcel" \
+            '{"message":"DHL: Votre colis n a pas pu etre livre. Confirmez: https://bit.ly/xyz"}' \
+            "Very dangerous"
+
+          check "case 2 bank code" \
+            '{"message":"Alerte Securite : Paiement suspect de 450EUR. Envoyez le code recu pour annuler."}' \
+            "Very dangerous"
+
+          check "case 3 emotional pressure" \
+            '{"message":"Coucou c est moi, nouveau numero, mon tel est casse, depanne-moi de 50EUR urgent"}' \
+            "Suspicious"
+
+          check "case 4 legitimate" \
+            '{"message":"Salut, n oublie pas le pain en rentrant ce soir. A tout a l heure !"}' \
+            "Low"
+
       - name: Personal data is masked server-side
         run: |
           # The API is public, so the server must redact even when the caller

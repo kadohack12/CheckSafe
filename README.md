@@ -110,6 +110,27 @@ lib/
   ui.js                  # Styles par niveau de risque et exemples pré-remplis
 ```
 
+## Déploiement sur Vercel
+
+1. Importer le dépôt `kadohack12/CheckSafe` sur <https://vercel.com/new>.
+   Vercel détecte Next.js automatiquement, aucune configuration de build à
+   saisir.
+2. Renseigner les variables d'environnement dans **Settings → Environment
+   Variables** (Production, Preview et Development) :
+   - `GEMINI_API_KEY`
+   - `GROQ_API_KEY`
+3. Déployer.
+
+Sans ces deux clés, l'application se déploie et s'affiche normalement, mais
+`/api/analyze` répond en mode dégradé (`degraded: true`) : c'est volontaire,
+l'application n'invente jamais de verdict.
+
+`vercel.json` fixe `maxDuration` à 60 s pour la route d'analyse. Le pire cas
+d'exécution est de 45 s (Gemini 15 s, puis deux modèles Groq 15 s), ce qui
+laisse une marge pour renvoyer le mode dégradé plutôt qu'un `504`. Si le
+projet Vercel utilise l'ancien plafond de 10 s (Hobby, Fluid Compute
+désactivé), réduire `PROVIDER_TIMEOUT_MS`.
+
 ## Qualité
 
 ```bash

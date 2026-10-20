@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { analyzeMessage } from "@/lib/analyze";
-import { MAX_MESSAGE_LENGTH } from "@/lib/prompt";
+import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

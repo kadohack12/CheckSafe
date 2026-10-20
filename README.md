@@ -105,9 +105,21 @@ app/
   page.js                # Interface utilisateur
 lib/
   analyze.js             # Orchestration Gemini -> Groq, parsing et normalisation
+  constants.js           # Constantes partagées client/serveur (limite de saisie)
   prompt.js              # System prompt et construction du prompt utilisateur
   ui.js                  # Styles par niveau de risque et exemples pré-remplis
 ```
+
+## Qualité
+
+```bash
+npm run lint     # ESLint (configuration next/core-web-vitals)
+npm run build    # Build de production
+```
+
+Vérifications passées : lint sans avertissement, build sans erreur, validation
+d'entrée testée (corps vide, JSON invalide, dépassement de longueur) et mode
+dégradé testé sans clés API.
 
 ## Limites assumées
 

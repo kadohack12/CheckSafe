@@ -55,3 +55,25 @@ jobs:
             echo "::warning::Both providers were unavailable; answered in degraded mode."
           fi
           echo "Smoke test passed."
+
+      - name: Personal data is masked server-side
+        run: |
+          # The API is public, so the server must redact even when the caller
+          # does not. This asserts the enforcement point, not just the UI.
+          response=$(curl -s --max-time 90 \
+            -X POST https://check-safe-beryl.vercel.app/api/analyze \
+            -H "Content-Type: application/json" \
+            -d '{"message":"URGENT: a 480 EUR transaction was detected. Call +33 6 12 34 56 78 and confirm your 6-digit code."}')
+
+          masked=$(echo "$response" | sed -n 's/.*"masked":\([0-9]*\).*/\1/p')
+          echo "masked=$masked"
+
+          if [ -z "$masked" ]; then
+            echo "::error::The response has no 'masked' field in meta."
+            exit 1
+          fi
+          if [ "$masked" -lt 2 ]; then
+            echo "::error::Expected at least 2 masked items (phone and amount), got $masked."
+            exit 1
+          fi
+          echo "Server-side redaction confirmed."

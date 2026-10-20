@@ -69,12 +69,48 @@ Paste an SMS, email or chat message. CheckSafe returns:
 | `reassurance` | A kind sentence that removes the sense of blame |
 
 The result can be copied in one tap and forwarded to whoever needs it — a
-parent, a partner, a colleague.
+parent, a partner, a colleague. A dedicated **Share with someone you care
+about** panel builds a short, pre-filled warning for WhatsApp or SMS, because
+scams spread through families and warning one person is worth more than any
+individual verdict.
 
 The interface ships with three one-tap examples (fake delivery SMS, bank
 security alert, and a genuinely harmless message) so a judge or a first-time
 visitor can see the full range in under thirty seconds, without inventing test
 content.
+
+## Privacy by design: personal data is masked before it is sent
+
+Scam messages usually contain the victim's own data — the callback number they
+are told to ring, the account being "verified", the card being "confirmed".
+None of that is needed to judge whether a message is a scam.
+
+So CheckSafe removes it **in the browser, before the text leaves the device**:
+
+| Masked | Example | Becomes |
+| --- | --- | --- |
+| Email address | `jean.dupont@example.com` | `[EMAIL]` |
+| Phone number | `+33 6 12 34 56 78`, `06 12 34 56 78` | `[PHONE]` |
+| Bank account (IBAN) | `FR76 3000 6000 0112 3456 7890 189` | `[IBAN]` |
+| Card number | `4539 1488 0343 6467` | `[CARD]` |
+| Amount | `480 €`, `2,99 EUR`, `$1,200` | `[AMOUNT]` |
+
+A green badge appears as soon as something is detected —
+**🔒 Private data masked before analysis** — naming what was found, with a
+**See exactly what is sent** toggle that shows the redacted text verbatim. The
+user can verify our claim instead of trusting it.
+
+Two details make this more than a cosmetic feature:
+
+**Over-redaction is treated as a safety bug.** Masking `24h` or `6-digit code`
+would blind the analyser to the very patterns that make a message dangerous.
+Amounts are therefore only masked when attached to a currency, and years,
+times and percentages are left alone. Fifteen tests pin this behaviour down.
+
+**The server redacts too.** The browser is not the enforcement point — the API
+is public and can be called directly. Redaction runs again server-side, and the
+count is returned in `meta.masked` so the protection is observable from
+outside. A scheduled check asserts this against the live deployment.
 
 ## Responsible design and trust
 
@@ -90,10 +126,12 @@ with `meta.degraded: true`, and the interface labels it explicitly:
 
 A false "this is safe" is far worse than an honest "I could not tell".
 
-**We do not store the message.** The text is sent to the AI provider for
-analysis and is not persisted. Server logs record the character count, the
-duration and the provider name — never the content, because the content can
-contain personal and financial details.
+**We do not store the message, and we send less of it.** Phone numbers, email
+addresses, bank details and card numbers are stripped in the browser before the
+text is transmitted (see the section above). What remains is sent to the AI
+provider for analysis and is not persisted. Server logs record the character
+count, the duration, the provider name and how many items were masked — never
+the content, because the content can contain personal and financial details.
 
 **We never ask for secrets.** The system prompt forbids requesting a password,
 a verification code or bank details, and the interface states plainly that no
@@ -147,16 +185,19 @@ lib/analyze.js
      normalizeResult()  → fixed response contract
                 │
                 ▼
-     JSON response + meta { provider, degraded, duration_ms }
+     JSON response + meta { provider, degraded, masked, duration_ms }
 ```
 
 **Stack:** Next.js 14 (App Router) · React 18 · Tailwind CSS · lucide-react ·
 `@google/generative-ai` · `groq-sdk`.
 
-**Two files carry the product logic:**
+**Three files carry the product logic:**
 
 - `lib/prompt.js` — the system prompt (the JSON contract and the safety rules)
   and `buildUserPrompt`, which wraps the user's message as untrusted data.
+- `lib/redact.js` — the privacy filter. Pure and dependency-free, so the same
+  code runs in the browser (to show the user what was masked) and on the server
+  (the real enforcement point).
 - `lib/analyze.js` — provider orchestration, time budgets, JSON extraction and
   normalisation.
 
@@ -245,6 +286,7 @@ Response `200`:
     "provider": "groq",
     "degraded": false,
     "provider_errors": [],
+    "masked": 2,
     "duration_ms": 2028
   }
 }
@@ -278,7 +320,12 @@ lib/
   analyze.js             provider orchestration, budgets, normalisation
   constants.js           values shared by client and server
   prompt.js              system prompt, JSON contract, untrusted-input wrapper
+  redact.js              privacy filter: masks personal data before sending
+  share.js               builds the forward-to-a-relative message
   ui.js                  risk styles and one-tap examples
+tests/
+  redact.test.mjs        masking, plus over-redaction guards
+  share.test.mjs         forwarded-message wording and links
 docs/
   PITCH_DEVPOST.md       submission copy for Devpost
 ```
@@ -286,13 +333,25 @@ docs/
 ## Quality
 
 ```bash
+npm test         # unit tests (node:test), 24 checks
 npm run lint     # ESLint (next/core-web-vitals)
 npm run build    # production build
 ```
 
-Verified: lint clean, production build clean, input validation tested (empty
-body, invalid JSON, over-length message), degraded mode tested without API
-keys, and the full fallback chain tested with deliberately invalid keys.
+Verified: 24 unit tests passing, lint clean, production build clean, input
+validation tested (empty body, invalid JSON, over-length message), degraded
+mode tested without API keys, the full fallback chain tested with deliberately
+invalid keys, and server-side redaction confirmed end to end (`masked=2` on a
+message containing a phone number and an amount).
+
+Two GitHub Actions agents run without human input:
+
+- **CI** — lint, tests and build on every push, plus a guard that fails the
+  build if the system prompt ever leaks into the client bundle.
+- **Production smoke test** — every 6 hours against the live deployment. It
+  checks the response contract, asserts that a known parcel-fee scam is never
+  classified as `Low`, and verifies that personal data is still masked
+  server-side.
 
 ## License
 

@@ -55,6 +55,11 @@ You paste a message. CheckSafe returns:
 - **2 to 4 concrete recommended actions**, in the order to take them.
 - **A reassurance** that reinforces the fact that checking *was* the right
   thing to do.
+- **A verified portal** when the message impersonates a brand we know. The link
+  always points to the brand's real site, rebuilt from our own registry, never
+  to the address in the message. Every link shown back to the user is
+  *defanged* (`https://bit.ly/xyz` → `hxxps://bit[.]ly/xyz`), so the interface
+  never offers a clickable route to the attacker.
 
 **Personal data is masked before it is sent.** Scam messages usually contain
 the victim's own data — the callback number, the account being "verified". None

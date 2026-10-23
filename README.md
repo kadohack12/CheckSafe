@@ -67,6 +67,32 @@ Paste an SMS, email or chat message. CheckSafe returns:
 | `detected_traps` | The specific techniques found in the message |
 | `recommended_actions` | 2–4 concrete steps, in order |
 | `reassurance` | A kind sentence that removes the sense of blame |
+| `official_safe_url` | The verified portal of an impersonated brand, or `null` |
+
+### Safe Link & Verified Portal
+
+When a message impersonates a known brand, knowing the message is a scam is only
+half the answer — the person still has to reach the real site. So the result
+carries an optional `official_safe_url`:
+
+```json
+"official_safe_url": { "impersonated_brand": "DHL", "official_url": "https://www.dhl.com" }
+```
+
+Two rules keep this feature from becoming a liability:
+
+- **The URL is never taken from the message or the model.** A message can try to
+  smuggle its own link in, and a model can hallucinate a domain. The URL is
+  always rebuilt from a hard-coded registry in `lib/officialSites.js`, and the
+  UI links only after re-checking the hostname against that registry
+  (`isTrustedOfficialUrl`). When the brand is not in the registry, the field is
+  `null` and no link is shown — an invented "official" URL would be worse than
+  nothing.
+- **Links are defanged before display.** Every link shown back to the user is
+  neutralised (`https://bit.ly/xyz` → `hxxps://bit[.]ly/xyz`), so the interface
+  never offers a clickable route to the attacker. Defanging runs in the browser
+  and on the server (`lib/defang.js`), and the API also returns a ready-made
+  `defanged_text`.
 
 The result can be copied in one tap and forwarded to whoever needs it — a
 parent, a partner, a colleague. A dedicated **Share with someone you care
@@ -74,10 +100,10 @@ about** panel builds a short, pre-filled warning for WhatsApp or SMS, because
 scams spread through families and warning one person is worth more than any
 individual verdict.
 
-The interface ships with three one-tap examples (fake delivery SMS, bank
-security alert, and a genuinely harmless message) so a judge or a first-time
-visitor can see the full range in under thirty seconds, without inventing test
-content.
+The interface ships with four one-tap examples (fake delivery SMS, bank
+security alert, phishing email with a fake refund or invoice, and a genuinely
+harmless message) so a judge or a first-time visitor can see the full range in
+under thirty seconds, without inventing test content.
 
 ## Privacy by design: personal data is masked before it is sent
 
@@ -243,13 +269,17 @@ lib/analyze.js
 **Stack:** Next.js 14 (App Router) · React 18 · Tailwind CSS · lucide-react ·
 `@google/generative-ai` · `groq-sdk`.
 
-**Three files carry the product logic:**
+**These files carry the product logic:**
 
 - `lib/prompt.js` — the system prompt (the JSON contract and the safety rules)
   and `buildUserPrompt`, which wraps the user's message as untrusted data.
 - `lib/redact.js` — the privacy filter. Pure and dependency-free, so the same
   code runs in the browser (to show the user what was masked) and on the server
   (the real enforcement point).
+- `lib/defang.js` — link detection and defanging. Also pure, so the same code
+  neutralises links in the browser, on the server and in the tests.
+- `lib/officialSites.js` — the verified-brand registry. The only place a
+  "safe" URL ever comes from; the model's proposed URL is discarded.
 - `lib/analyze.js` — provider orchestration, time budgets, JSON extraction and
   normalisation.
 
@@ -334,6 +364,10 @@ Response `200`:
     "Report the message to your national anti-fraud service."
   ],
   "reassurance": "You did the right thing by checking before paying.",
+  "official_safe_url": {
+    "impersonated_brand": "DHL",
+    "official_url": "https://www.dhl.com"
+  },
   "meta": {
     "provider": "groq",
     "degraded": false,
@@ -366,13 +400,20 @@ the analysis route.
 app/
   api/analyze/route.js   POST /api/analyze — validation, budgets, response
   page.js                main UI (client component)
-  layout.js              metadata
+  layout.js              metadata, Open Graph, structured data (JSON-LD)
   globals.css            Tailwind + global styles
+  robots.js              dynamic robots.txt
+  sitemap.js             dynamic sitemap.xml
+  manifest.js            dynamic web app manifest
+  icon.svg               favicon / app icon
+  opengraph-image.js     generated social preview card (1200×630)
 lib/
   analyze.js             provider race, budgets, normalisation, safety floor
-  constants.js           values shared by client and server
+  constants.js           values shared by client and server (incl. SEO + FAQ)
+  defang.js              link detection + defanging, so no link stays clickable
   localRules.js          offline rules engine, bilingual, never returns Low
   highlight.js           turns exact quotes into renderable segments
+  officialSites.js       verified-brand registry; the only source of safe URLs
   prompt.js              system prompt, JSON contract, untrusted-input wrapper
   redact.js              privacy filter: masks personal data before sending
   share.js               builds the forward-to-a-relative message
@@ -382,9 +423,34 @@ tests/
   highlight.test.mjs     exact-quote matching and paraphrase rejection
   redact.test.mjs        masking, plus over-redaction guards
   share.test.mjs         forwarded-message wording and links
+  defang.test.mjs        link detection, defanging, and amount/time false positives
+  officialSites.test.mjs brand recognition and the trusted-URL boundary
+  analyze.test.mjs       response contract + model-URL rejection
 docs/
   PITCH_DEVPOST.md       submission copy for Devpost
 ```
+
+## Search visibility (SEO)
+
+Search metadata lives in one place, `lib/constants.js`, and is reused by the
+page metadata, the structured data and the social cards so they cannot drift
+apart. `app/layout.js` emits the title, description, keywords, canonical URL,
+Open Graph and Twitter tags, and a `robots` directive that allows indexing with
+a large image preview.
+
+Machine-readable files are generated by Next.js route handlers:
+
+- `app/robots.js` → `/robots.txt`, allowing crawlers and pointing to the
+  sitemap while keeping them out of `/api/`.
+- `app/sitemap.js` → `/sitemap.xml`.
+- `app/manifest.js` → `/manifest.webmanifest` for installability.
+- `app/opengraph-image.js` → a generated 1200×630 preview card.
+- `app/icon.svg` → the favicon and app icon.
+
+The layout also injects JSON-LD describing the tool as a `WebApplication` and a
+`FAQPage`. The FAQ answers come from `FAQ_ITEMS` in `lib/constants.js` and are
+rendered both in the visible page and in the structured data, so the markup
+always matches what a visitor can actually read.
 
 ## Quality
 

@@ -493,11 +493,13 @@ Two GitHub Actions agents run without human input:
   build if the system prompt ever leaks into the client bundle, and a guard
   that evaluates the built server bundle to confirm the link pattern still
   matches a bare domain after minification.
-- **Production smoke test** — every 6 hours against the live deployment. It
-  checks the response contract (including `official_safe_url` and
-  `defanged_text`), asserts that a known parcel-fee scam is never classified as
-  `Low` and that its link comes back defanged, and verifies that personal data
-  is still masked server-side.
+- **Production smoke test** — on every push to `main`, plus every 6 hours
+  against the live deployment. A push-triggered run first waits for Vercel to
+  report the deployment of that commit as ready, so it verifies the new build
+  rather than the previous one. It checks the response contract (including
+  `official_safe_url` and `defanged_text`), asserts that a known parcel-fee
+  scam is never classified as `Low` and that its link comes back defanged, and
+  verifies that personal data is still masked server-side.
 
 The four reference cases are also covered by unit tests, so a regression in
 the verdict thresholds fails the build rather than reaching a user.

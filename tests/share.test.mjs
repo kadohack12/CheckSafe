@@ -72,3 +72,32 @@ test("SMS link encodes the text", () => {
   assert.ok(link.startsWith("sms:?body="));
   assert.ok(link.includes("%20"));
 });
+
+test("includes the verified official site when one was found", () => {
+  const text = buildShareText({
+    ...dangerous,
+    official_safe_url: {
+      impersonated_brand: "DHL",
+      official_url: "https://www.dhl.com",
+    },
+  });
+  assert.ok(text.includes("Official DHL website: https://www.dhl.com"));
+});
+
+test("never forwards an unverified 'official' link", () => {
+  // A tampered or hallucinated URL must be dropped from the shared message.
+  const text = buildShareText({
+    ...dangerous,
+    official_safe_url: {
+      impersonated_brand: "DHL",
+      official_url: "https://dhl-fee-secure.com",
+    },
+  });
+  assert.ok(!text.includes("dhl-fee-secure.com"));
+  assert.ok(!text.includes("Official DHL website"));
+});
+
+test("omits the official site line when there is none", () => {
+  const text = buildShareText({ ...dangerous, official_safe_url: null });
+  assert.ok(!text.includes("Official"));
+});

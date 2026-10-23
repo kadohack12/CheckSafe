@@ -38,10 +38,25 @@ jobs:
           echo
 
           # The response contract must hold even in degraded mode.
-          for field in risk_level summary detected_traps recommended_actions reassurance; do
+          for field in risk_level summary detected_traps recommended_actions reassurance official_safe_url; do
             echo "$response" | grep -q "\"$field\"" || {
               echo "::error::Response is missing the '$field' field."; exit 1; }
           done
+
+          # Links in the message must come back defanged, so the UI can display
+          # them without offering a clickable route to the attacker.
+          if ! echo "$response" | grep -q '"defanged_text"'; then
+            echo "::error::Response is missing the 'defanged_text' field."
+            exit 1
+          fi
+          if echo "$response" | grep -q '"defanged_text":"[^"]*parcel-pay-secure\.com'; then
+            echo "::error::The scam link was returned un-defanged."
+            exit 1
+          fi
+          if ! echo "$response" | grep -q 'parcel-pay-secure\[\.\]com'; then
+            echo "::error::The scam link was not defanged as expected."
+            exit 1
+          fi
 
           # A parcel-fee scam must not come back as "Low". This is the safety
           # property that matters: a confident wrong "safe" is the worst

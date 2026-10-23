@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { analyzeMessage } from "@/lib/analyze";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { defangText } from "@/lib/defang";
 import { redactSensitiveData } from "@/lib/redact";
 
 export const runtime = "nodejs";
@@ -66,6 +67,9 @@ export async function POST(request) {
     return NextResponse.json({
       ...result,
       trap_quotes,
+      // The message comes back defanged so the interface can display it
+      // without ever offering a clickable route to the attacker.
+      defanged_text: defangText(redaction.text),
       meta: {
         provider,
         // "degraded" means the answer came from the rules engine, not a model.

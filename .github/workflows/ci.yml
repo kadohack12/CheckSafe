@@ -50,3 +50,28 @@ jobs:
             exit 1
           fi
           echo "No system prompt in the client bundle."
+
+      - name: Check the link pattern survived minification
+        run: |
+          # The bare-domain branch of the link pattern contains a `\b` word
+          # boundary. A minifier can constant-fold a `new RegExp(...)` template
+          # and double that escape, which silently disables bare-domain
+          # detection in production while every unit test still passes on the
+          # source. This regressed once, so we assert on the built server bundle
+          # by evaluating its own pattern against a bare domain.
+          node -e '
+            const fs = require("fs");
+            const bundle = fs.readFileSync(".next/server/app/api/analyze/route.js", "utf8");
+            const start = bundle.indexOf("/(?:https?:");
+            const end = start < 0 ? -1 : bundle.indexOf("/gi", start);
+            if (start < 0 || end < 0) {
+              console.error("::error::The link pattern is missing from the server bundle.");
+              process.exit(1);
+            }
+            const pattern = eval(bundle.slice(start, end + 3));
+            if (!pattern.test("evil-pay.top")) {
+              console.error("::error::Bare-domain detection is broken in the server bundle.");
+              process.exit(1);
+            }
+            console.log("Link pattern matches a bare domain in the server bundle.");
+          '

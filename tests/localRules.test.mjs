@@ -197,3 +197,32 @@ test("escalation leaves equal verdicts untouched", () => {
   assert.equal(result.risk_level, "Suspicious");
   assert.equal(result.escalated, false);
 });
+
+test("offline output always carries the official_safe_url field", () => {
+  for (const message of [CASE_DELIVERY, CASE_BANK, CASE_LEGITIMATE, ""]) {
+    const result = analyzeLocally(message);
+    assert.ok(
+      "official_safe_url" in result,
+      `missing official_safe_url for: ${message}`,
+    );
+  }
+});
+
+test("offline mode offers a verified link for an impersonated brand", () => {
+  const result = analyzeLocally(CASE_DELIVERY);
+  assert.equal(result.official_safe_url.impersonated_brand, "DHL");
+  assert.equal(result.official_safe_url.official_url, "https://www.dhl.com");
+});
+
+test("offline mode offers no verified link without a known brand", () => {
+  const result = analyzeLocally(CASE_LEGITIMATE);
+  assert.equal(result.official_safe_url, null);
+});
+
+test("offline mode detects a bare domain, without an http prefix", () => {
+  const result = analyzeLocally(
+    "Your refund is waiting. Confirm your bank details at secure-billing-refunds.com within 48h.",
+  );
+  assert.equal(result.risk_level, "Suspicious");
+  assert.ok(result.matched_rules.includes("refund_lure_link"));
+});

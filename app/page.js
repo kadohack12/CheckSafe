@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   ClipboardList,
   Copy,
@@ -22,23 +23,32 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { FAQ_ITEMS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
+import { defangText } from "@/lib/defang";
 import { buildHighlightSegments } from "@/lib/highlight";
+import { isTrustedOfficialUrl } from "@/lib/officialSites";
 import { redactSensitiveData } from "@/lib/redact";
 import { buildShareText, buildSmsLink, buildWhatsAppLink } from "@/lib/share";
 import { EXAMPLES, FALLBACK_RISK_STYLE, RISK_STYLES } from "@/lib/ui";
 
 /**
  * Shows the analysed message with the dangerous wording highlighted.
- * Only excerpts that literally occur in the text can be highlighted, which is
- * why the model is required to quote word for word.
+ *
+ * The text is displayed defanged (links neutralised) and rendered as plain
+ * text, never as HTML, so a link in a scam message can never be clicked from
+ * our interface. Quotes are defanged the same way so highlighting still lines
+ * up with the neutralised text.
  */
 function HighlightedMessage({ text, quotes }) {
-  const segments = buildHighlightSegments(text, quotes);
+  const safeText = defangText(text);
+  const safeQuotes = (Array.isArray(quotes) ? quotes : []).map((quote) =>
+    defangText(quote),
+  );
+  const segments = buildHighlightSegments(safeText, safeQuotes);
   if (segments.length === 0) return null;
 
   return (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
       {segments.map((segment, index) =>
         segment.highlighted ? (
           <mark
@@ -52,6 +62,40 @@ function HighlightedMessage({ text, quotes }) {
         ),
       )}
     </p>
+  );
+}
+
+/**
+ * The verified portal card. It only ever links to a URL that passed our
+ * registry check, and it repeats the one instruction that matters: never use
+ * the link from the message.
+ */
+function VerifiedPortal({ safeUrl }) {
+  if (!safeUrl || !isTrustedOfficialUrl(safeUrl.official_url)) return null;
+  const brand = safeUrl.impersonated_brand || "this organisation";
+
+  return (
+    <div className="rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-300">
+      <a
+        href={safeUrl.official_url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-base font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/30"
+      >
+        <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+        Go to the verified {brand} website
+      </a>
+      <p className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-emerald-900">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          <strong className="font-semibold">
+            Never use the link from the message.
+          </strong>{" "}
+          Use this verified link instead: it points to the brand&apos;s official
+          domain, not to the sender&apos;s address.
+        </span>
+      </p>
+    </div>
   );
 }
 
@@ -144,6 +188,10 @@ export default function Home() {
         : null,
       `Recommended actions: ${(result.recommended_actions || []).join(" | ")}`,
       result.reassurance,
+      // Only a URL that passed the registry check is ever copied out.
+      isTrustedOfficialUrl(result.official_safe_url?.official_url)
+        ? `Official website: ${result.official_safe_url.official_url}`
+        : null,
     ]
       .filter(Boolean)
       .join("\n");
@@ -287,7 +335,7 @@ export default function Home() {
           <Sparkles className="h-4 w-4" aria-hidden="true" />
           Quick examples to try
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {EXAMPLES.map((example) => (
             <button
               key={example.id}
@@ -456,6 +504,10 @@ export default function Home() {
                   {copied ? "Copied!" : "Copy summary"}
                 </button>
               </div>
+
+              {/* Safe Link & Verified Portal: a rescue route to the real site,
+                  offered only when the brand is in our verified registry. */}
+              <VerifiedPortal safeUrl={result.official_safe_url} />
             </div>
           </div>
 
@@ -498,6 +550,31 @@ export default function Home() {
         </section>
       )}
 
+      <section
+        aria-labelledby="faq-title"
+        className="rounded-3xl bg-white/80 p-5 ring-1 ring-slate-200 sm:p-7"
+      >
+        <h2
+          id="faq-title"
+          className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-800"
+        >
+          <Info className="h-5 w-5 text-blue-600" aria-hidden="true" />
+          Frequently asked questions
+        </h2>
+        <div className="space-y-4">
+          {FAQ_ITEMS.map((item) => (
+            <div key={item.question}>
+              <h3 className="text-sm font-semibold text-slate-800">
+                {item.question}
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                {item.answer}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <footer className="mt-auto space-y-3 border-t border-slate-200 pt-6 text-xs leading-relaxed text-slate-500">
         <p className="flex items-start gap-2">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
@@ -511,8 +588,9 @@ export default function Home() {
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span>
             Transparency note: CheckSafe reads the wording of a message for
-            social-engineering patterns. It does not scan links, attachments or
-            your device, and it does not replace checking with the organisation
+            social-engineering patterns, and neutralises any link it shows you
+            so it cannot be clicked. It does not open links, attachments or your
+            device, and it does not replace checking with the organisation
             itself. Treat the result as a second opinion, never a guarantee.
           </span>
         </p>

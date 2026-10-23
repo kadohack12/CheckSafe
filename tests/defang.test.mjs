@@ -114,3 +114,17 @@ test("detection is deterministic across repeated calls", () => {
   }
   assert.deepEqual(first, ["https://x.top", "y-pay.com"]);
 });
+
+test("a www prefix is defanged exactly once", () => {
+  // Regression: handling "www." separately inserted a dot that the global dot
+  // replacement then defanged again, yielding "www[[.]]example.com".
+  assert.equal(defangUrl("www.fake-bank.com"), "www[.]fake-bank[.]com");
+  assert.equal(
+    defangText("Go to www.fake-bank.com now"),
+    "Go to www[.]fake-bank[.]com now",
+  );
+});
+
+test("defangs the scheme and the www prefix together", () => {
+  assert.equal(defangUrl("https://www.example.com"), "hxxps://www[.]example[.]com");
+});

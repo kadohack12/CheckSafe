@@ -65,9 +65,11 @@ Paste an SMS, email or chat message. CheckSafe returns:
 | `risk_level` | **Low** / **Suspicious** / **Very dangerous** / **Undetermined** |
 | `summary` | One plain sentence, no jargon |
 | `detected_traps` | The specific techniques found in the message |
+| `trap_quotes` | The exact wording, copied from the message, behind each trap |
 | `recommended_actions` | 2–4 concrete steps, in order |
 | `reassurance` | A kind sentence that removes the sense of blame |
 | `official_safe_url` | The verified portal of an impersonated brand, or `null` |
+| `defanged_text` | The message with every link neutralised, ready to display |
 
 ### Safe Link & Verified Portal
 
@@ -131,7 +133,8 @@ Two details make this more than a cosmetic feature:
 **Over-redaction is treated as a safety bug.** Masking `24h` or `6-digit code`
 would blind the analyser to the very patterns that make a message dangerous.
 Amounts are therefore only masked when attached to a currency, and years,
-times and percentages are left alone. Fifteen tests pin this behaviour down.
+times and percentages are left alone. The masking suite pins both directions:
+fifteen tests cover what must be masked *and* what must survive.
 
 **The server redacts too.** The browser is not the enforcement point — the API
 is public and can be called directly. Redaction runs again server-side, and the
@@ -160,7 +163,7 @@ The application must stay useful when the network, the API keys or the model
 providers fail. `lib/localRules.js` is a deterministic, bilingual rules engine
 that detects ten known scam signatures: requested secret codes, gift-card and
 crypto payments, shortened links combined with a brand or a delivery, blocked
-accounts with urgency, money requests from a new number, and so on.
+accounts with urgency, money requests from a new number, refund lures, and so on.
 
 It has two roles:
 
@@ -182,10 +185,12 @@ this project refuses to do.
 ## Determinism
 
 `temperature` is `0` on both providers, so the same message yields the same
-verdict on stage as it did in testing. Provider selection also uses a
-deterministic tie-break rather than "first to resolve", so latency variation
-cannot change the outcome. The rules engine is pure and synchronous, so its
-verdict is stable by construction.
+verdict on stage as it did in testing. Provider selection is a race — the first
+usable answer wins — so which provider answers can vary with latency. This does
+not threaten the verdict in the cases that matter: both providers receive the
+same prompt at `temperature: 0`, and whenever the local rules match a known
+signature they can only raise the level, never lower it. The rules engine
+itself is pure and synchronous, so its verdict is stable by construction.
 
 Measured: three consecutive analyses of the same message all returned
 `Very dangerous`.
@@ -196,13 +201,18 @@ This is the part of the product that matters most, because we are asking
 frightened people to trust a machine.
 
 **We never invent a verdict.** If both AI providers fail, the API does not
-throw an error and does not guess. It returns `risk_level: "Undetermined"`
-with `meta.degraded: true`, and the interface labels it explicitly:
+throw an error and does not guess. It falls back to the deterministic rules
+engine and flags the answer with `meta.degraded: true`, and the interface
+labels it explicitly as *Local analysis (fallback mode)*, naming the patterns
+that matched:
 
-> *Our analysis services were temporarily unavailable. This is a safety
-> message, not an analysis.*
+> *Our AI services are unreachable right now, so this verdict comes from our
+> built-in detection rules… Be extra careful with anything this result does not
+> clearly explain.*
 
-A false "this is safe" is far worse than an honest "I could not tell".
+When no rule matches, the rules engine reports `Undetermined` rather than
+`Low`: unknown is not safe. A false "this is safe" is far worse than an honest
+"I could not tell".
 
 **We do not store the message, and we send less of it.** Phone numbers, email
 addresses, bank details and card numbers are stripped in the browser before the
@@ -227,8 +237,10 @@ explicit instruction to analyse it and never obey it.
 We would rather be trusted than look impressive.
 
 - **It reads wording, not infrastructure.** CheckSafe does not resolve
-  domains, open links, scan attachments or inspect your device. A message can
-  be dangerous for reasons the text alone does not reveal.
+  domains, open links, scan attachments or inspect your device. It recognises
+  links in the text and neutralises them for display, but it never follows them
+  or checks what is behind them. A message can be dangerous for reasons the
+  text alone does not reveal.
 - **A language model can be wrong in both directions.** It can miss a subtle
   scam, and it can flag a legitimate message. This is a second opinion, not a
   guarantee.
@@ -263,7 +275,8 @@ lib/analyze.js
      normalizeResult()  → fixed response contract
                 │
                 ▼
-     JSON response + meta { provider, degraded, masked, duration_ms }
+     JSON response + meta { provider, degraded, local_rules, provider_errors,
+                            masked, duration_ms }
 ```
 
 **Stack:** Next.js 14 (App Router) · React 18 · Tailwind CSS · lucide-react ·
@@ -292,19 +305,24 @@ model was renamed is a demo that loses. The engine is built to survive that.
    `Promise.any` keeps the first usable answer. A sequential fallback would
    make the user wait out a slow provider's entire budget before the healthy
    one was even asked — we measured this at **30 s before, 2–3 s after**.
-2. **An ordered list of models per provider.** `GEMINI_MODELS` and
-   `GROQ_MODELS` are comma-separated lists tried in order. A retired model
-   (`404`) or an overloaded one (`503`) falls through to the next entry
-   automatically.
-3. **Layered time budgets.** 8 s per attempt, 14 s for Gemini, 25 s for Groq,
-   45 s overall — all under the route's `maxDuration` of 60 s, so a slow
-   provider degrades gracefully instead of producing a platform `504`.
+2. **An ordered list of models per provider.** Gemini tries
+   `GEMINI_MODEL` (if set) then `gemini-3.8-flash`, `gemini-flash-latest` and
+   `gemini-2.5-flash` in order. A retired model (`404`) or an overloaded one
+   (`503`) falls through to the next entry automatically. Groq uses a single
+   model, `GROQ_MODEL`.
+3. **Layered time budgets.** A single budget per provider — 14 s for the
+   Gemini chain (which may try several models) and 25 s for Groq — both under
+   the route's `maxDuration` of 60 s, so a slow provider degrades gracefully
+   instead of producing a platform `504`. Because the two run concurrently, the
+   slowest budget is the worst case, not the sum.
 4. **Strict normalisation.** Whatever the model returns, `normalizeResult`
-   enforces the contract: an unrecognised risk level becomes `Undetermined`,
-   missing action lists get safe defaults. The UI can never render a malformed
-   verdict.
+   enforces the contract. A reply missing a risk level, a summary, an action
+   list or a reassurance is rejected outright rather than patched with a
+   guess — the provider chain moves on to the next model, and if none
+   qualifies the local rules answer instead. The UI can never render a
+   malformed verdict.
 5. **Diagnostics, without leaking.** Failures are recorded per model
-   (`gemini-3.8-flash: 503 …`), truncated to 300 characters before leaving the
+   (`gemini-3.8-flash: 503 …`), truncated to 160 characters before leaving the
    server, and surfaced in `meta.provider_errors` so a broken deployment is
    diagnosable from a single request.
 
@@ -330,12 +348,11 @@ Open <http://localhost:3000>.
 | --- | --- | --- |
 | `GEMINI_API_KEY` | yes | Google AI Studio key, primary provider |
 | `GROQ_API_KEY` | yes | Groq key, fallback provider |
-| `GEMINI_MODELS` | no | Default: `gemini-3.8-flash,gemini-flash-latest` |
-| `GROQ_MODELS` | no | Default: `openai/gpt-oss-120b,openai/gpt-oss-20b` |
-| `PROVIDER_TIMEOUT_MS` | no | Default: `8000`. Ceiling per model attempt |
-| `GEMINI_BUDGET_MS` | no | Default: `14000` |
-| `GROQ_BUDGET_MS` | no | Default: `25000` |
-| `TOTAL_BUDGET_MS` | no | Default: `45000`, under `maxDuration` (60 s) |
+| `GEMINI_MODEL` | no | Extra Gemini model tried first. Built-in chain: `gemini-3.8-flash`, `gemini-flash-latest`, `gemini-2.5-flash` |
+| `GROQ_MODEL` | no | Default: `openai/gpt-oss-120b` |
+| `GEMINI_BUDGET_MS` | no | Default: `14000`. Time budget for the Gemini model chain |
+| `GROQ_BUDGET_MS` | no | Default: `25000`. Time budget for the Groq call |
+| `NEXT_PUBLIC_SITE_URL` | no | Public URL, used in the share message and SEO metadata. Default: `https://check-safe-beryl.vercel.app` |
 
 ## API
 
@@ -344,7 +361,7 @@ Open <http://localhost:3000>.
 Request:
 
 ```json
-{ "message": "Your parcel is blocked, click here to pay 2.99 EUR" }
+{ "message": "DHL: your parcel is blocked, pay 2.99 EUR at dhl-fee-secure.com" }
 ```
 
 Response `200`:
@@ -358,6 +375,7 @@ Response `200`:
     "Fraudulent link",
     "Impersonation of a known brand"
   ],
+  "trap_quotes": ["dhl-fee-secure.com"],
   "recommended_actions": [
     "Do not click any link in this message.",
     "Check the delivery status on the carrier's official website.",
@@ -368,11 +386,13 @@ Response `200`:
     "impersonated_brand": "DHL",
     "official_url": "https://www.dhl.com"
   },
+  "defanged_text": "DHL: your parcel is blocked, pay [AMOUNT] at dhl-fee-secure[.]com",
   "meta": {
     "provider": "groq",
     "degraded": false,
+    "local_rules": ["payment_with_link", "delivery_with_link", "urgency_brand_pressure"],
     "provider_errors": [],
-    "masked": 2,
+    "masked": 1,
     "duration_ms": 2028
   }
 }
@@ -426,6 +446,7 @@ tests/
   defang.test.mjs        link detection, defanging, and amount/time false positives
   officialSites.test.mjs brand recognition and the trusted-URL boundary
   analyze.test.mjs       response contract + model-URL rejection
+  contract.test.mjs      public payload only carries the documented fields
 docs/
   PITCH_DEVPOST.md       submission copy for Devpost
 ```
@@ -455,12 +476,12 @@ always matches what a visitor can actually read.
 ## Quality
 
 ```bash
-npm test         # unit tests (node:test), 60 checks
+npm test         # unit tests (node:test), 112 checks
 npm run lint     # ESLint (next/core-web-vitals)
 npm run build    # production build
 ```
 
-Verified: 60 unit tests passing, lint clean, production build clean, input
+Verified: 112 unit tests passing, lint clean, production build clean, input
 validation tested (empty body, invalid JSON, over-length message), degraded
 mode tested without API keys, the full fallback chain tested with deliberately
 invalid keys, and server-side redaction confirmed end to end (`masked=2` on a
@@ -469,11 +490,14 @@ message containing a phone number and an amount).
 Two GitHub Actions agents run without human input:
 
 - **CI** — lint, tests and build on every push, plus a guard that fails the
-  build if the system prompt ever leaks into the client bundle.
+  build if the system prompt ever leaks into the client bundle, and a guard
+  that evaluates the built server bundle to confirm the link pattern still
+  matches a bare domain after minification.
 - **Production smoke test** — every 6 hours against the live deployment. It
-  checks the response contract, asserts that a known parcel-fee scam is never
-  classified as `Low`, and verifies that personal data is still masked
-  server-side.
+  checks the response contract (including `official_safe_url` and
+  `defanged_text`), asserts that a known parcel-fee scam is never classified as
+  `Low` and that its link comes back defanged, and verifies that personal data
+  is still masked server-side.
 
 The four reference cases are also covered by unit tests, so a regression in
 the verdict thresholds fails the build rather than reaching a user.

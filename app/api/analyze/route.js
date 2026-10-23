@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { analyzeMessage } from "@/lib/analyze";
+import { analyzeMessage, buildPublicResult } from "@/lib/analyze";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
-import { defangText } from "@/lib/defang";
 import { redactSensitiveData } from "@/lib/redact";
 
 export const runtime = "nodejs";
@@ -58,18 +57,10 @@ export async function POST(request) {
       `[CheckSafe] analysed ${message.length} chars in ${Date.now() - startedAt} ms (provider=${provider ?? "local-rules"}, masked=${redaction.total})`,
     );
 
-    // Any quote that does not literally appear in the message would break
-    // highlighting, so it is dropped here as a final guard.
-    const trap_quotes = (result.trap_quotes || []).filter(
-      (quote) => typeof quote === "string" && redaction.text.includes(quote),
-    );
+    const publicResult = buildPublicResult(result, redaction.text);
 
     return NextResponse.json({
-      ...result,
-      trap_quotes,
-      // The message comes back defanged so the interface can display it
-      // without ever offering a clickable route to the attacker.
-      defanged_text: defangText(redaction.text),
+      ...publicResult,
       meta: {
         provider,
         // "degraded" means the answer came from the rules engine, not a model.
